@@ -165,6 +165,8 @@ class MCPTester {
           'research_request_create',
           'research_request_check_status',
           'research_request_get_results',
+          'reasoning_models_list',
+          'reasoning_providers_list',
           'openai_deep_research_create',
           'openai_deep_research_check_status', 
           'openai_deep_research_get_results'
@@ -214,6 +216,30 @@ class MCPTester {
 
         return {
           summary: providerSummaries.map((entry) => `${entry.provider}: ${entry.modelCount} models`).join('; '),
+          providers: providerSummaries,
+        };
+      });
+
+      await this.test('List Reasoning Providers', 'Calls reasoning_providers_list to inspect credential status and env hints.', async () => {
+        const response = await this.sendMCPRequest('tools/call', {
+          name: 'reasoning_providers_list',
+          arguments: {}
+        });
+        if (!response.result || !response.result.content) {
+          throw new Error('No content in reasoning_providers_list response');
+        }
+        const payload = JSON.parse(response.result.content[0].text);
+        if (!payload.providers || !Array.isArray(payload.providers) || !payload.providers.length) {
+          throw new Error('No providers returned from reasoning_providers_list');
+        }
+        const providerSummaries = payload.providers.map((provider) => ({
+          provider: provider.id,
+          enabled: provider.enabled,
+          envKeys: provider.env_keys || [],
+          missingKeys: provider.missing_keys || [],
+        }));
+        return {
+          summary: providerSummaries.map((entry) => `${entry.provider}: enabled=${entry.enabled}`).join('; '),
           providers: providerSummaries,
         };
       });

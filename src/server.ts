@@ -30,6 +30,8 @@ const listModelsSchema = z.object({
   provider: z.string().optional().describe("Optional provider filter. Leave blank to list every provider."),
 });
 
+const listProvidersSchema = z.object({});
+
 type CreateInputs = z.infer<typeof createRequestSchema>;
 type StatusInputs = z.infer<typeof statusSchema>;
 
@@ -72,6 +74,27 @@ function summarizeModel(model: ReasoningModel) {
     supports_reasoning: model.supportsReasoning ?? null,
     parameter_descriptions: model.parameterDescriptions || {},
     has_parameter_schema: Boolean(model.parameterSchema),
+  };
+}
+
+function buildProviderMetadata(providerId: ProviderId) {
+  const provider = getProvider(providerId);
+  const envKeys = provider.envKeys || [];
+  const missingKeys = envKeys.filter((key) => !process.env[key]);
+  const enabled = missingKeys.length === 0;
+  const favoritesKey = `${toEnvPrefix(providerId)}_FAVORITE_MODELS`;
+  const defaultModelKey = `${toEnvPrefix(providerId)}_DEFAULT_MODEL`;
+  return {
+    id: providerId,
+    display_name: provider.displayName,
+    env_keys: envKeys,
+    enabled,
+    missing_keys: missingKeys,
+    favorites_env_key: favoritesKey,
+    favorites_value: process.env[favoritesKey] || null,
+    default_model_env_key: defaultModelKey,
+    default_model_value: process.env[defaultModelKey] || null,
+    requires_background_polling: provider.requiresBackgroundPolling,
   };
 }
 
@@ -395,6 +418,28 @@ server.registerTool(
     inputSchema: listModelsSchema.shape,
   },
   reasoningModelsHandler
+);
+
+server.registerTool(
+  "reasoning_providers_list",
+  {
+    title: "List Reasoning Providers",
+    description: "List configured reasoning providers, credential status, and related environment keys.",
+    inputSchema: listProvidersSchema.shape,
+  },
+  async () => {
+    const providerIds = getAvailableProviderIds();
+    const providers = providerIds.map(buildProviderMetadata);
+    return {
+      content: [{
+        type: "text" as const,
+        text: JSON.stringify({
+          default_provider: normalizeProviderId(),
+          providers,
+        }, null, 2),
+      }],
+    };
+  }
 );
 
 async function main() {

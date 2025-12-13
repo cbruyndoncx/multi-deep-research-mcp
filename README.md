@@ -8,6 +8,7 @@ A TypeScript MCP (Model Context Protocol) server that can route research queries
 - **research_request_check_status**: Check request state for any provider  
 - **research_request_get_results**: Retrieve completed research output with citations when provided
 - **reasoning_models_list** / **openai_thinking_models_list**: Inspect dynamic provider model catalogs with favorite/default hints
+- **reasoning_providers_list**: Discover configured providers, credential status, and relevant env keys
 - Legacy compatibility: `openai_deep_research_*` tools remain for OpenAI-only flows and now guard against non-OpenAI providers.
 
 ## Quick Start
@@ -83,6 +84,12 @@ research_request_get_results({
 reasoning_models_list({ provider?: "deepseek" })
 ```
 Returns provider catalogs with favorite/default env keys, parameter descriptions, and capability hints.
+
+### List Reasoning Providers
+```typescript
+reasoning_providers_list({})
+```
+Returns each configured provider, credential status, and the env var keys to set favorites/defaults.
 
 ## Models
 
