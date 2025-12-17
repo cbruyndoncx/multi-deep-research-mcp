@@ -60,7 +60,7 @@ function flattenCatalog(raw: any, providerHint?: string): CatalogMap {
 
 export async function fetchLiteLLMReasoningCatalog(providerHint = "openrouter"): Promise<CatalogMap> {
   const source = process.env.LITELLM_MODEL_SOURCE || DEFAULT_LITELLM_SOURCE;
-  const response = await fetch(source, { headers: { "User-Agent": "openai-deep-research-mcp" } });
+  const response = await fetch(source, { headers: { "User-Agent": "multi-deep-research-mcp" } });
   if (!response.ok) {
     throw new Error(`Failed to fetch LiteLLM catalog (${response.status})`);
   }

@@ -1,6 +1,8 @@
-import OpenAI from "openai";
 import { z } from "zod";
 import { fetchLiteLLMReasoningCatalog, findLiteLLMMetadata } from "../utils/litellmCatalog.js";
+import { PARAMETER_CONSTRAINTS, COMMON_PARAMETER_DESCRIPTIONS, REQUEST_STATUS } from "../constants.js";
+import { buildMessages, unique } from "../utils/helpers.js";
+import { OpenAIClient } from "../clients/OpenAIClient.js";
 const MODEL_PATTERNS = [
     /^o[0-9]/i,
     /^gpt-4\.1/i,
@@ -12,9 +14,9 @@ const MODEL_PATTERNS = [
     /thinking/i,
 ];
 const PARAMETER_SCHEMA = z.object({
-    temperature: z.number().min(0).max(2).optional(),
-    top_p: z.number().min(0).max(1).optional(),
-    max_output_tokens: z.number().min(32).max(128000).optional(),
+    temperature: z.number().min(PARAMETER_CONSTRAINTS.TEMPERATURE.MIN).max(PARAMETER_CONSTRAINTS.TEMPERATURE.MAX).optional(),
+    top_p: z.number().min(PARAMETER_CONSTRAINTS.TOP_P.MIN).max(PARAMETER_CONSTRAINTS.TOP_P.MAX).optional(),
+    max_output_tokens: z.number().min(PARAMETER_CONSTRAINTS.MAX_TOKENS_OPENAI.MIN).max(PARAMETER_CONSTRAINTS.MAX_TOKENS_OPENAI.MAX).optional(),
     reasoning: z
         .object({
         effort: z.enum(["medium", "high"]).optional(),
@@ -23,45 +25,16 @@ const PARAMETER_SCHEMA = z.object({
         .optional(),
 });
 const PARAMETER_DESCRIPTIONS = {
-    temperature: "0-2. Lower values = deterministic responses.",
-    top_p: "0-1 nucleus sampling.",
-    max_output_tokens: "Maximum tokens for the response.",
+    ...COMMON_PARAMETER_DESCRIPTIONS,
     "reasoning.effort": "medium/high reasoning effort.",
     "reasoning.summary": "auto/none reasoning summaries.",
 };
-function getClient() {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-        throw new Error("OPENAI_API_KEY environment variable is required.");
-    }
-    const timeout = parseInt(process.env.OPENAI_TIMEOUT || "600000", 10);
-    return new OpenAI({
-        apiKey,
-        timeout,
-        baseURL: process.env.OPENAI_BASE_URL,
-    });
-}
-function unique(values) {
-    const seen = new Set();
-    const ordered = [];
-    for (const value of values) {
-        if (!seen.has(value)) {
-            seen.add(value);
-            ordered.push(value);
-        }
-    }
-    return ordered;
-}
 function filterModelIds(ids) {
     return unique(ids.filter((id) => MODEL_PATTERNS.some((pattern) => pattern.test(id))));
 }
 async function fetchModelIds(client) {
-    const ids = [];
-    for await (const model of client.models.list()) {
-        if (model?.id && typeof model.id === "string") {
-            ids.push(model.id);
-        }
-    }
+    const models = await client.listModels();
+    const ids = models.map((m) => m.id);
     if (!ids.length) {
         throw new Error("OpenAI models.list returned no models");
     }
@@ -88,8 +61,7 @@ function buildModelEntry(modelId, liteMeta) {
             : undefined,
     };
 }
-async function loadModels() {
-    const client = getClient();
+async function loadModels(client) {
     const ids = await fetchModelIds(client);
     let liteCatalog;
     try {
@@ -100,60 +72,98 @@ async function loadModels() {
     }
     return ids.map((id) => buildModelEntry(id, findLiteLLMMetadata(liteCatalog, id)));
 }
-function buildMessages(query, systemMessage) {
-    const messages = [];
-    if (systemMessage) {
-        messages.push({
-            role: "developer",
-            content: [{ type: "input_text", text: systemMessage }],
+function appendCitationsFromContent(contentItem, bucket) {
+    const annotations = Array.isArray(contentItem?.annotations) ? contentItem.annotations : [];
+    for (const annotation of annotations) {
+        bucket.push({
+            id: bucket.length + 1,
+            title: annotation?.title || "Unknown",
+            url: annotation?.url,
+            snippet: annotation?.snippet,
         });
     }
-    messages.push({
-        role: "user",
-        content: [{ type: "input_text", text: query }],
-    });
-    return messages;
 }
-function extractCitations(mainContent) {
-    const citations = [];
-    if (mainContent?.annotations) {
-        mainContent.annotations.forEach((annotation, index) => {
-            citations.push({
-                id: index + 1,
-                title: annotation.title || "Unknown",
-                url: annotation.url,
-                snippet: annotation.snippet,
-            });
-        });
+function extractTextFromContent(contentItem) {
+    if (!contentItem) {
+        return null;
     }
-    return citations;
+    if (typeof contentItem === "string") {
+        return contentItem;
+    }
+    if (typeof contentItem?.text === "string") {
+        return contentItem.text;
+    }
+    if (Array.isArray(contentItem?.text)) {
+        const flattened = contentItem.text
+            .map((entry) => {
+            if (typeof entry === "string") {
+                return entry;
+            }
+            if (typeof entry?.text === "string") {
+                return entry.text;
+            }
+            return null;
+        })
+            .filter((value) => Boolean(value))
+            .join("");
+        if (flattened) {
+            return flattened;
+        }
+    }
+    if (Array.isArray(contentItem?.content)) {
+        const nested = contentItem.content
+            .map((child) => extractTextFromContent(child))
+            .filter((value) => Boolean(value))
+            .join("");
+        if (nested) {
+            return nested;
+        }
+    }
+    if (typeof contentItem?.value === "string") {
+        return contentItem.value;
+    }
+    return null;
 }
 function extractReport(response) {
     const output = response?.output;
-    if (!output || !Array.isArray(output) || !output.length) {
+    if (!Array.isArray(output) || !output.length) {
         return null;
     }
-    const lastMessage = output[output.length - 1];
-    const mainContent = lastMessage?.content?.[0];
-    if (!mainContent) {
+    const sections = [];
+    const citations = [];
+    for (const message of output) {
+        const contents = Array.isArray(message?.content)
+            ? message.content
+            : message?.content
+                ? [message.content]
+                : [];
+        for (const contentItem of contents) {
+            const chunk = extractTextFromContent(contentItem);
+            if (chunk && chunk.trim()) {
+                sections.push(chunk.trim());
+            }
+            appendCitationsFromContent(contentItem, citations);
+        }
+    }
+    if (!sections.length) {
         return null;
     }
     return {
-        report: mainContent.text || String(mainContent),
-        citations: extractCitations(mainContent),
+        report: sections.join("\n\n"),
+        citations,
     };
 }
-export function createOpenAIProvider() {
+export function createOpenAIProvider(config) {
+    const client = new OpenAIClient(config);
     return {
         id: "openai",
         displayName: "OpenAI",
         envKeys: ["OPENAI_API_KEY"],
         requiresBackgroundPolling: true,
         async listModels() {
-            return loadModels();
+            return loadModels(client);
         },
         async createRequest(args) {
-            const client = getClient();
             const tools = [{ type: "web_search_preview" }];
             if (args.includeCodeInterpreter) {
                 tools.push({ type: "code_interpreter" });
@@ -162,7 +172,7 @@ export function createOpenAIProvider() {
             const overrides = (args.parameters || {});
             const requestPayload = {
                 model: args.model.id,
-                input: buildMessages(args.query, args.systemMessage),
+                input: buildMessages(args.query, args.systemMessage, "openai"),
                 tools,
                 background: true,
                 reasoning: overrides.reasoning || baseParams.reasoning || { summary: "auto" },
@@ -176,29 +186,27 @@ export function createOpenAIProvider() {
             if (typeof overrides.max_output_tokens === "number") {
                 requestPayload.max_output_tokens = overrides.max_output_tokens;
             }
-            const response = await client.responses.create(requestPayload);
+            const response = await client.createResponse(requestPayload);
             return {
                 requestId: response.id,
-                status: response.status || "queued",
+                status: response.status || REQUEST_STATUS.QUEUED,
                 model: response.model || args.model.id,
                 provider: "openai",
             };
         },
         async checkStatus(requestId) {
-            const client = getClient();
-            const response = await client.responses.retrieve(requestId);
+            const response = await client.retrieveResponse(requestId);
             return {
                 requestId: response.id,
-                status: response.status || "unknown",
+                status: response.status || REQUEST_STATUS.UNKNOWN,
                 provider: "openai",
-                model: response.model || "unknown",
+                model: response.model || REQUEST_STATUS.UNKNOWN,
                 createdAt: new Date(response.created_at * 1000).toISOString(),
                 raw: response,
             };
         },
         async getResults(requestId) {
-            const client = getClient();
-            const response = await client.responses.retrieve(requestId);
+            const response = await client.retrieveResponse(requestId);
             const extracted = extractReport(response);
             if (!extracted) {
                 throw new Error("Unable to extract report from OpenAI response.");
@@ -206,7 +214,7 @@ export function createOpenAIProvider() {
             return {
                 requestId: response.id,
                 provider: "openai",
-                model: response.model || "unknown",
+                model: response.model || REQUEST_STATUS.UNKNOWN,
                 results: {
                     report: extracted.report,
                     citations: extracted.citations,

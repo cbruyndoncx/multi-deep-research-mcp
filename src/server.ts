@@ -4,10 +4,17 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { getAvailableProviderIds, getProvider } from "./providers/index.js";
 import { ProviderId, ReasoningModel } from "./providers/types.js";
+import { SERVER_NAME, SERVER_VERSION, DEFAULT_PROVIDER, REQUEST_STATUS } from "./constants.js";
+import {
+  parseListEnv,
+  toEnvPrefix,
+  createErrorResponse,
+  createSuccessResponse,
+} from "./utils/helpers.js";
 
 const server = new McpServer({
-  name: "openai-deep-research",
-  version: "1.0.0",
+  name: SERVER_NAME,
+  version: SERVER_VERSION,
 });
 
 const requestProviderMap = new Map<string, ProviderId>();
@@ -36,21 +43,7 @@ type CreateInputs = z.infer<typeof createRequestSchema>;
 type StatusInputs = z.infer<typeof statusSchema>;
 
 function normalizeProviderId(provider?: string): ProviderId {
-  return (provider || process.env.REASONING_DEFAULT_PROVIDER || process.env.OPENAI_DEFAULT_PROVIDER || "openai").toLowerCase() as ProviderId;
-}
-
-function toEnvPrefix(providerId: ProviderId) {
-  return providerId.replace(/[^a-z0-9]/gi, "_").toUpperCase();
-}
-
-function parseListEnv(value?: string): string[] {
-  if (!value) {
-    return [];
-  }
-  return value
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
+  return (provider || process.env.REASONING_DEFAULT_PROVIDER || process.env.OPENAI_DEFAULT_PROVIDER || DEFAULT_PROVIDER).toLowerCase() as ProviderId;
 }
 
 function getFavoriteModels(providerId: ProviderId): string[] {
@@ -184,32 +177,19 @@ async function handleCreateTool(inputs: CreateInputs, forcedProvider?: ProviderI
       model,
     });
     rememberRequestProvider(provider.id, result.requestId);
-    return {
-      content: [{
-        type: "text" as const,
-        text: JSON.stringify({
-          request_id: result.requestId,
-          provider: result.provider,
-          model: result.model,
-          status: result.status,
-          favorites,
-          parameters: validatedParameters || model.defaultParameters || {},
-          available_models: catalog.map(summarizeModel),
-          message: "Research request created successfully",
-        }, null, 2),
-      }],
-    };
+    return createSuccessResponse({
+      request_id: result.requestId,
+      provider: result.provider,
+      model: result.model,
+      status: result.status,
+      favorites,
+      parameters: validatedParameters || model.defaultParameters || {},
+      available_models: catalog.map(summarizeModel),
+      message: "Research request created successfully",
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return {
-      content: [{
-        type: "text" as const,
-        text: JSON.stringify({
-          error: `Failed to create research request: ${message}`,
-          status: "failed",
-        }, null, 2),
-      }],
-    };
+    return createErrorResponse(`Failed to create research request: ${message}`, REQUEST_STATUS.FAILED);
   }
 }
 
@@ -246,57 +226,31 @@ async function fetchResults(inputs: StatusInputs, forcedProvider?: ProviderId) {
 async function handleStatusTool(inputs: StatusInputs, forcedProvider?: ProviderId) {
   try {
     const status = await fetchStatus(inputs, forcedProvider);
-    return {
-      content: [{
-        type: "text" as const,
-        text: JSON.stringify({
-          request_id: status.requestId,
-          provider: status.provider,
-          model: status.model,
-          status: status.status,
-          created_at: status.createdAt,
-        }, null, 2),
-      }],
-    };
+    return createSuccessResponse({
+      request_id: status.requestId,
+      provider: status.provider,
+      model: status.model,
+      status: status.status,
+      created_at: status.createdAt,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return {
-      content: [{
-        type: "text" as const,
-        text: JSON.stringify({
-          error: `Failed to check status: ${message}`,
-          status: "error",
-        }, null, 2),
-      }],
-    };
+    return createErrorResponse(`Failed to check status: ${message}`, REQUEST_STATUS.ERROR);
   }
 }
 
 async function handleResultsTool(inputs: StatusInputs, forcedProvider?: ProviderId) {
   try {
     const result = await fetchResults(inputs, forcedProvider);
-    return {
-      content: [{
-        type: "text" as const,
-        text: JSON.stringify({
-          request_id: result.requestId,
-          provider: result.provider,
-          model: result.model,
-          results: result.results,
-        }, null, 2),
-      }],
-    };
+    return createSuccessResponse({
+      request_id: result.requestId,
+      provider: result.provider,
+      model: result.model,
+      results: result.results,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return {
-      content: [{
-        type: "text" as const,
-        text: JSON.stringify({
-          error: `Failed to get results: ${message}`,
-          status: "error",
-        }, null, 2),
-      }],
-    };
+    return createErrorResponse(`Failed to get results: ${message}`, REQUEST_STATUS.ERROR);
   }
 }
 
@@ -390,14 +344,9 @@ async function listModels(providerFilter?: string) {
 
 async function reasoningModelsHandler(inputs: z.infer<typeof listModelsSchema>, _extra?: unknown) {
   const catalog = await listModels(inputs.provider);
-  return {
-    content: [{
-      type: "text" as const,
-      text: JSON.stringify({
-        providers: catalog,
-      }, null, 2),
-    }],
-  };
+  return createSuccessResponse({
+    providers: catalog,
+  });
 }
 
 server.registerTool(
@@ -430,15 +379,10 @@ server.registerTool(
   async () => {
     const providerIds = getAvailableProviderIds();
     const providers = providerIds.map(buildProviderMetadata);
-    return {
-      content: [{
-        type: "text" as const,
-        text: JSON.stringify({
-          default_provider: normalizeProviderId(),
-          providers,
-        }, null, 2),
-      }],
-    };
+    return createSuccessResponse({
+      default_provider: normalizeProviderId(),
+      providers,
+    });
   }
 );
 

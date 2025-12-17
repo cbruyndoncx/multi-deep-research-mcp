@@ -1,5 +1,13 @@
 import { z } from "zod";
 export type ProviderId = "openai" | "deepseek" | string;
+/**
+ * Configuration for a provider
+ */
+export interface ProviderConfig {
+    apiKey: string;
+    baseUrl?: string;
+    timeout: number;
+}
 export interface ReasoningModel {
     id: string;
     label: string;

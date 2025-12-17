@@ -1,6 +1,8 @@
-# OpenAI Deep Research MCP Server
+# Multi-Provider Deep Research MCP Server
 
 A TypeScript MCP (Model Context Protocol) server that can route research queries to OpenAI Deep Research models or DeepSeek reasoning models, with room for future providers.
+
+**Based on the original work by [fbettag/openai-deep-research-mcp](https://github.com/fbettag/openai-deep-research-mcp)** - extended to support multiple AI providers.
 
 ## Features
 
@@ -14,13 +16,13 @@ A TypeScript MCP (Model Context Protocol) server that can route research queries
 ## Quick Start
 
 ```bash
-npx github:fbettag/openai-deep-research-mcp
+npx github:cbruyndoncx/multi-deep-research-mcp
 ```
 
 ## Quick Setup with Claude CLI
 
 ```bash
-claude mcp add openai-deep-research -s user npx github:fbettag/openai-deep-research-mcp -e OPENAI_API_KEY=sk-your-openai-api-key-here
+claude mcp add multi-deep-research -s user npx github:cbruyndoncx/multi-deep-research-mcp -e OPENAI_API_KEY=sk-your-openai-api-key-here
 ```
 
 Replace `sk-your-openai-api-key-here` with your actual OpenAI API key.
@@ -35,9 +37,9 @@ Add to your Claude Desktop configuration:
 ```json
 {
   "mcpServers": {
-    "openai-deep-research": {
+    "multi-deep-research": {
       "command": "npx",
-      "args": ["github:fbettag/openai-deep-research-mcp"],
+      "args": ["github:cbruyndoncx/multi-deep-research-mcp"],
       "env": {
         "OPENAI_API_KEY": "sk-your-openai-api-key-here"
       }

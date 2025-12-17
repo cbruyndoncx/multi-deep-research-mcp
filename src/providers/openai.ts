@@ -1,4 +1,3 @@
-import OpenAI from "openai";
 import { z } from "zod";
 import {
   CreateReasoningRequest,
@@ -7,8 +6,12 @@ import {
   ReasoningProvider,
   RequestStatusResult,
   ResearchResult,
+  ProviderConfig,
 } from "./types.js";
 import { fetchLiteLLMReasoningCatalog, findLiteLLMMetadata, LiteLLMModelMetadata } from "../utils/litellmCatalog.js";
+import { PARAMETER_CONSTRAINTS, COMMON_PARAMETER_DESCRIPTIONS, REQUEST_STATUS } from "../constants.js";
+import { buildMessages, unique } from "../utils/helpers.js";
+import { OpenAIClient } from "../clients/OpenAIClient.js";
 
 interface Citation {
   id: number;
@@ -29,9 +32,9 @@ const MODEL_PATTERNS = [
 ];
 
 const PARAMETER_SCHEMA = z.object({
-  temperature: z.number().min(0).max(2).optional(),
-  top_p: z.number().min(0).max(1).optional(),
-  max_output_tokens: z.number().min(32).max(128000).optional(),
+  temperature: z.number().min(PARAMETER_CONSTRAINTS.TEMPERATURE.MIN).max(PARAMETER_CONSTRAINTS.TEMPERATURE.MAX).optional(),
+  top_p: z.number().min(PARAMETER_CONSTRAINTS.TOP_P.MIN).max(PARAMETER_CONSTRAINTS.TOP_P.MAX).optional(),
+  max_output_tokens: z.number().min(PARAMETER_CONSTRAINTS.MAX_TOKENS_OPENAI.MIN).max(PARAMETER_CONSTRAINTS.MAX_TOKENS_OPENAI.MAX).optional(),
   reasoning: z
     .object({
       effort: z.enum(["medium", "high"]).optional(),
@@ -41,49 +44,18 @@ const PARAMETER_SCHEMA = z.object({
 });
 
 const PARAMETER_DESCRIPTIONS: Record<string, string> = {
-  temperature: "0-2. Lower values = deterministic responses.",
-  top_p: "0-1 nucleus sampling.",
-  max_output_tokens: "Maximum tokens for the response.",
+  ...COMMON_PARAMETER_DESCRIPTIONS,
   "reasoning.effort": "medium/high reasoning effort.",
   "reasoning.summary": "auto/none reasoning summaries.",
 };
-
-function getClient(): OpenAI {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY environment variable is required.");
-  }
-  const timeout = parseInt(process.env.OPENAI_TIMEOUT || "600000", 10);
-  return new OpenAI({
-    apiKey,
-    timeout,
-    baseURL: process.env.OPENAI_BASE_URL,
-  });
-}
-
-function unique(values: string[]): string[] {
-  const seen = new Set<string>();
-  const ordered: string[] = [];
-  for (const value of values) {
-    if (!seen.has(value)) {
-      seen.add(value);
-      ordered.push(value);
-    }
-  }
-  return ordered;
-}
 
 function filterModelIds(ids: string[]): string[] {
   return unique(ids.filter((id) => MODEL_PATTERNS.some((pattern) => pattern.test(id))));
 }
 
-async function fetchModelIds(client: OpenAI): Promise<string[]> {
-  const ids: string[] = [];
-  for await (const model of client.models.list()) {
-    if (model?.id && typeof model.id === "string") {
-      ids.push(model.id);
-    }
-  }
+async function fetchModelIds(client: OpenAIClient): Promise<string[]> {
+  const models = await client.listModels();
+  const ids = models.map((m) => m.id);
   if (!ids.length) {
     throw new Error("OpenAI models.list returned no models");
   }
@@ -112,8 +84,7 @@ function buildModelEntry(modelId: string, liteMeta?: LiteLLMModelMetadata): Reas
   };
 }
 
-async function loadModels(): Promise<ReasoningModel[]> {
-  const client = getClient();
+async function loadModels(client: OpenAIClient): Promise<ReasoningModel[]> {
   const ids = await fetchModelIds(client);
   let liteCatalog: Map<string, LiteLLMModelMetadata> | undefined;
   try {
@@ -124,63 +95,107 @@ async function loadModels(): Promise<ReasoningModel[]> {
   return ids.map((id) => buildModelEntry(id, findLiteLLMMetadata(liteCatalog, id)));
 }
 
-function buildMessages(query: string, systemMessage?: string) {
-  const messages: any[] = [];
-  if (systemMessage) {
-    messages.push({
-      role: "developer",
-      content: [{ type: "input_text", text: systemMessage }],
+
+function appendCitationsFromContent(contentItem: any, bucket: Citation[]) {
+  const annotations = Array.isArray(contentItem?.annotations) ? contentItem.annotations : [];
+  for (const annotation of annotations) {
+    bucket.push({
+      id: bucket.length + 1,
+      title: annotation?.title || "Unknown",
+      url: annotation?.url,
+      snippet: annotation?.snippet,
     });
   }
-  messages.push({
-    role: "user",
-    content: [{ type: "input_text", text: query }],
-  });
-  return messages;
 }
 
-function extractCitations(mainContent: any): Citation[] {
-  const citations: Citation[] = [];
-  if (mainContent?.annotations) {
-    mainContent.annotations.forEach((annotation: any, index: number) => {
-      citations.push({
-        id: index + 1,
-        title: annotation.title || "Unknown",
-        url: annotation.url,
-        snippet: annotation.snippet,
-      });
-    });
+function extractTextFromContent(contentItem: any): string | null {
+  if (!contentItem) {
+    return null;
   }
-  return citations;
+  if (typeof contentItem === "string") {
+    return contentItem;
+  }
+  if (typeof contentItem?.text === "string") {
+    return contentItem.text;
+  }
+  if (Array.isArray(contentItem?.text)) {
+    const flattened = contentItem.text
+      .map((entry: any) => {
+        if (typeof entry === "string") {
+          return entry;
+        }
+        if (typeof entry?.text === "string") {
+          return entry.text;
+        }
+        return null;
+      })
+      .filter((value: string | null): value is string => Boolean(value))
+      .join("");
+    if (flattened) {
+      return flattened;
+    }
+  }
+  if (Array.isArray(contentItem?.content)) {
+    const nested = contentItem.content
+      .map((child: any) => extractTextFromContent(child))
+      .filter((value: string | null): value is string => Boolean(value))
+      .join("");
+    if (nested) {
+      return nested;
+    }
+  }
+  if (typeof contentItem?.value === "string") {
+    return contentItem.value;
+  }
+  return null;
 }
 
 function extractReport(response: any) {
   const output = response?.output;
-  if (!output || !Array.isArray(output) || !output.length) {
+  if (!Array.isArray(output) || !output.length) {
     return null;
   }
-  const lastMessage = output[output.length - 1];
-  const mainContent = lastMessage?.content?.[0];
-  if (!mainContent) {
+
+  const sections: string[] = [];
+  const citations: Citation[] = [];
+
+  for (const message of output) {
+    const contents = Array.isArray(message?.content)
+      ? message.content
+      : message?.content
+        ? [message.content]
+        : [];
+    for (const contentItem of contents) {
+      const chunk = extractTextFromContent(contentItem);
+      if (chunk && chunk.trim()) {
+        sections.push(chunk.trim());
+      }
+      appendCitationsFromContent(contentItem, citations);
+    }
+  }
+
+  if (!sections.length) {
     return null;
   }
+
   return {
-    report: mainContent.text || String(mainContent),
-    citations: extractCitations(mainContent),
+    report: sections.join("\n\n"),
+    citations,
   };
 }
 
-export function createOpenAIProvider(): ReasoningProvider {
+export function createOpenAIProvider(config: ProviderConfig): ReasoningProvider {
+  const client = new OpenAIClient(config);
+
   return {
     id: "openai",
     displayName: "OpenAI",
     envKeys: ["OPENAI_API_KEY"],
     requiresBackgroundPolling: true,
     async listModels() {
-      return loadModels();
+      return loadModels(client);
     },
     async createRequest(args: CreateReasoningRequest): Promise<CreateRequestResult> {
-      const client = getClient();
       const tools: any[] = [{ type: "web_search_preview" }];
       if (args.includeCodeInterpreter) {
         tools.push({ type: "code_interpreter" });
@@ -189,7 +204,7 @@ export function createOpenAIProvider(): ReasoningProvider {
       const overrides = (args.parameters || {}) as Record<string, any>;
       const requestPayload: any = {
         model: args.model.id,
-        input: buildMessages(args.query, args.systemMessage),
+        input: buildMessages(args.query, args.systemMessage, "openai"),
         tools,
         background: true,
         reasoning: overrides.reasoning || baseParams.reasoning || { summary: "auto" },
@@ -203,29 +218,27 @@ export function createOpenAIProvider(): ReasoningProvider {
       if (typeof overrides.max_output_tokens === "number") {
         requestPayload.max_output_tokens = overrides.max_output_tokens;
       }
-      const response = await client.responses.create(requestPayload);
+      const response = await client.createResponse(requestPayload);
       return {
         requestId: response.id,
-        status: response.status || "queued",
+        status: response.status || REQUEST_STATUS.QUEUED,
         model: response.model || args.model.id,
         provider: "openai",
       };
     },
     async checkStatus(requestId: string): Promise<RequestStatusResult> {
-      const client = getClient();
-      const response = await client.responses.retrieve(requestId);
+      const response = await client.retrieveResponse(requestId);
       return {
         requestId: response.id,
-        status: response.status || "unknown",
+        status: response.status || REQUEST_STATUS.UNKNOWN,
         provider: "openai",
-        model: response.model || "unknown",
+        model: response.model || REQUEST_STATUS.UNKNOWN,
         createdAt: new Date(response.created_at * 1000).toISOString(),
         raw: response,
       };
     },
     async getResults(requestId: string): Promise<ResearchResult> {
-      const client = getClient();
-      const response = await client.responses.retrieve(requestId);
+      const response = await client.retrieveResponse(requestId);
       const extracted = extractReport(response);
       if (!extracted) {
         throw new Error("Unable to extract report from OpenAI response.");
@@ -233,7 +246,7 @@ export function createOpenAIProvider(): ReasoningProvider {
       return {
         requestId: response.id,
         provider: "openai",
-        model: response.model || "unknown",
+        model: response.model || REQUEST_STATUS.UNKNOWN,
         results: {
           report: extracted.report,
           citations: extracted.citations,

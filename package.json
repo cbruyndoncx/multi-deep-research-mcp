@@ -1,11 +1,11 @@
 {
-  "name": "openai-deep-research-mcp",
+  "name": "multi-deep-research-mcp",
   "version": "1.0.0",
-  "description": "A TypeScript MCP server for OpenAI Deep Research API",
+  "description": "A TypeScript MCP server for multiple Deep Research APIs",
   "main": "dist/server.js",
   "type": "module",
   "bin": {
-    "openai-deep-research-mcp": "./dist/server.js"
+    "multi-deep-research-mcp": "./dist/server.js"
   },
   "engines": {
     "node": ">=18.0.0"

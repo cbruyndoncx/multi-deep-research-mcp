@@ -1,9 +1,11 @@
 import { z } from "zod";
-const DEFAULT_BASE_URL = "https://api.deepseek.com";
+import { PARAMETER_CONSTRAINTS, COMMON_PARAMETER_DESCRIPTIONS, REQUEST_STATUS } from "../constants.js";
+import { buildMessages } from "../utils/helpers.js";
+import { DeepSeekClient } from "../clients/DeepSeekClient.js";
 const PARAMETER_SCHEMA = z.object({
-    temperature: z.number().min(0).max(2).optional(),
-    top_p: z.number().min(0).max(1).optional(),
-    max_tokens: z.number().min(32).max(16384).optional(),
+    temperature: z.number().min(PARAMETER_CONSTRAINTS.TEMPERATURE.MIN).max(PARAMETER_CONSTRAINTS.TEMPERATURE.MAX).optional(),
+    top_p: z.number().min(PARAMETER_CONSTRAINTS.TOP_P.MIN).max(PARAMETER_CONSTRAINTS.TOP_P.MAX).optional(),
+    max_tokens: z.number().min(PARAMETER_CONSTRAINTS.MAX_TOKENS_DEEPSEEK.MIN).max(PARAMETER_CONSTRAINTS.MAX_TOKENS_DEEPSEEK.MAX).optional(),
 });
 const FALLBACK_MODELS = [
     {
@@ -14,11 +16,7 @@ const FALLBACK_MODELS = [
         supportsBackgroundJobs: false,
         supportsCodeInterpreter: false,
         parameterSchema: PARAMETER_SCHEMA,
-        parameterDescriptions: {
-            temperature: "0-2. Default 0.7.",
-            top_p: "0-1 nucleus sampling.",
-            max_tokens: "Maximum tokens in the reply.",
-        },
+        parameterDescriptions: COMMON_PARAMETER_DESCRIPTIONS,
     },
     {
         id: "deepseek-r1",
@@ -30,45 +28,10 @@ const FALLBACK_MODELS = [
         parameterSchema: PARAMETER_SCHEMA,
     },
 ];
-const resultCache = new Map();
-function getConfig() {
-    const apiKey = process.env.DEEPSEEK_API_KEY;
-    if (!apiKey) {
-        throw new Error("DEEPSEEK_API_KEY environment variable is required for the DeepSeek provider.");
-    }
-    return {
-        apiKey,
-        baseUrl: process.env.DEEPSEEK_BASE_URL || DEFAULT_BASE_URL,
-        timeout: parseInt(process.env.DEEPSEEK_TIMEOUT || "600000", 10),
-    };
-}
 async function fetchModels() {
     // DeepSeek currently does not expose a models listing API that mirrors OpenAI's responses.
     // Return the fallback set for now so contributors have a starting point.
     return [...FALLBACK_MODELS];
-}
-async function postJSON(url, body, headers) {
-    const response = await fetch(url, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            ...headers,
-        },
-        body: JSON.stringify(body),
-    });
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`DeepSeek API error (${response.status}): ${errorText}`);
-    }
-    return response.json();
-}
-function buildMessages(query, systemMessage) {
-    const messages = [];
-    if (systemMessage) {
-        messages.push({ role: "system", content: systemMessage });
-    }
-    messages.push({ role: "user", content: query });
-    return messages;
 }
 function extractReport(data) {
     const message = data?.choices?.[0]?.message;
@@ -80,7 +43,9 @@ function extractReport(data) {
         : message.content;
     return typeof content === "string" ? content : JSON.stringify(content, null, 2);
 }
-export function createDeepSeekProvider() {
+export function createDeepSeekProvider(config) {
+    const client = new DeepSeekClient(config);
+    const resultCache = new Map();
     return {
         id: "deepseek",
         displayName: "DeepSeek",
@@ -93,26 +58,16 @@ export function createDeepSeekProvider() {
             if (args.includeCodeInterpreter) {
                 throw new Error("DeepSeek models do not currently support the code interpreter tool.");
             }
-            const config = getConfig();
-            const url = `${config.baseUrl.replace(/\/$/, "")}/v1/chat/completions`;
             const overrides = (args.parameters || {});
-            const payload = {
+            const params = {
                 model: args.model.id,
-                messages: buildMessages(args.query, args.systemMessage),
+                messages: buildMessages(args.query, args.systemMessage, "deepseek"),
                 stream: false,
+                ...(typeof overrides.temperature === "number" && { temperature: overrides.temperature }),
+                ...(typeof overrides.top_p === "number" && { top_p: overrides.top_p }),
+                ...(typeof overrides.max_tokens === "number" && { max_tokens: overrides.max_tokens }),
             };
-            if (typeof overrides.temperature === "number") {
-                payload.temperature = overrides.temperature;
-            }
-            if (typeof overrides.top_p === "number") {
-                payload.top_p = overrides.top_p;
-            }
-            if (typeof overrides.max_tokens === "number") {
-                payload.max_tokens = overrides.max_tokens;
-            }
-            const data = await postJSON(url, payload, {
-                Authorization: `Bearer ${config.apiKey}`,
-            });
+            const data = await client.createChatCompletion(params);
             const requestId = data?.id || `deepseek-${Date.now()}`;
             const report = extractReport(data);
             const result = {
@@ -129,7 +84,7 @@ export function createDeepSeekProvider() {
             resultCache.set(requestId, result);
             return {
                 requestId,
-                status: "completed",
+                status: REQUEST_STATUS.COMPLETED,
                 model: args.model.id,
                 provider: "deepseek",
             };
@@ -141,7 +96,7 @@ export function createDeepSeekProvider() {
             const result = resultCache.get(requestId);
             return {
                 requestId,
-                status: "completed",
+                status: REQUEST_STATUS.COMPLETED,
                 provider: "deepseek",
                 model: result.model,
             };
