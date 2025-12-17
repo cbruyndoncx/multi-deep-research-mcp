@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -10,6 +12,7 @@ const server = new McpServer({
     version: SERVER_VERSION,
 });
 const requestProviderMap = new Map();
+const RESULTS_DIR = path.resolve(process.cwd(), process.env.RESEARCH_RESULTS_DIR || "research-results");
 const createRequestSchema = z.object({
     provider: z.string().optional().describe("Provider to use (openai, deepseek, ...). Defaults to env or OpenAI."),
     model: z.string().optional().describe("Model identifier for the selected provider. Leave blank to auto-select favorites or provider defaults."),
@@ -111,20 +114,57 @@ function detectProviderForRequest(requestId, explicitProvider) {
     }
     return normalizeProviderId();
 }
-function ensureProviderAllowed(inputProvider, forcedProvider) {
-    if (!inputProvider) {
-        return;
-    }
-    const normalized = normalizeProviderId(inputProvider);
-    if (normalized !== forcedProvider) {
-        throw new Error(`This tool is limited to provider '${forcedProvider}'. Use the provider-neutral research_request_* tools instead.`);
-    }
+function sanitizeFilenameSegment(value) {
+    const base = value ? value.toString() : "";
+    const cleaned = base.replace(/[^a-z0-9-_]+/gi, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "");
+    return cleaned.slice(0, 48) || "result";
 }
-function ensureRequestProviderMatches(requestId, expectedProvider) {
-    const knownProvider = requestProviderMap.get(requestId);
-    if (knownProvider && knownProvider !== expectedProvider) {
-        throw new Error(`Request '${requestId}' belongs to provider '${knownProvider}'. Use the provider-neutral research_request_* tools or select the matching provider.`);
-    }
+async function persistResearchResult(result) {
+    await fs.mkdir(RESULTS_DIR, { recursive: true });
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const baseName = [
+        sanitizeFilenameSegment(result.provider),
+        sanitizeFilenameSegment(result.model),
+        sanitizeFilenameSegment(result.requestId),
+        timestamp,
+    ]
+        .filter(Boolean)
+        .join("_");
+    const fileName = `${baseName}.md`;
+    const filePath = path.join(RESULTS_DIR, fileName);
+    const relativePath = path.relative(process.cwd(), filePath);
+    const structuredResults = (result.results || {});
+    const reportText = typeof structuredResults.report === "string" && structuredResults.report.trim().length
+        ? structuredResults.report.trim()
+        : JSON.stringify(structuredResults, null, 2);
+    const citations = Array.isArray(structuredResults.citations) ? structuredResults.citations : [];
+    const citationLines = citations.length
+        ? citations.map((citation, index) => {
+            const title = citation?.title || `Citation ${index + 1}`;
+            const link = citation?.url ? ` (${citation.url})` : "";
+            const snippet = citation?.snippet ? ` — ${citation.snippet}` : "";
+            return `${index + 1}. ${title}${link}${snippet}`;
+        })
+        : ["- No citations provided."];
+    const markdown = [
+        "# Research Results",
+        `- Request ID: ${result.requestId}`,
+        `- Provider: ${result.provider}`,
+        `- Model: ${result.model}`,
+        `- Generated At: ${new Date().toISOString()}`,
+        "",
+        "## Report",
+        reportText,
+        "",
+        "## Citations",
+        citationLines.join("\n"),
+    ].join("\n");
+    await fs.writeFile(filePath, `${markdown}\n`, "utf8");
+    return {
+        absolutePath: filePath,
+        relativePath,
+        fileName,
+    };
 }
 async function runWithProvider(providerId, action) {
     try {
@@ -134,13 +174,10 @@ async function runWithProvider(providerId, action) {
         throw error instanceof Error ? error : new Error(String(error));
     }
 }
-async function handleCreateTool(inputs, forcedProvider) {
+async function handleCreateTool(inputs) {
     try {
-        if (forcedProvider) {
-            ensureProviderAllowed(inputs.provider, forcedProvider);
-        }
-        const providerId = forcedProvider ?? normalizeProviderId(inputs.provider);
-        const { provider, model, catalog, favorites } = await resolveModelSelection(providerId, inputs.model);
+        const providerId = normalizeProviderId(inputs.provider);
+        const { provider, model, favorites } = await resolveModelSelection(providerId, inputs.model);
         const validatedParameters = validateModelParameters(model, inputs.parameters);
         const result = await provider.createRequest({
             query: inputs.query,
@@ -150,6 +187,17 @@ async function handleCreateTool(inputs, forcedProvider) {
             model,
         });
         rememberRequestProvider(provider.id, result.requestId);
+        let synchronousResultPayload;
+        if (result.status === REQUEST_STATUS.COMPLETED && result.extra?.synchronousResult) {
+            const researchResult = result.extra.synchronousResult;
+            const fileInfo = await persistResearchResult(researchResult);
+            synchronousResultPayload = {
+                results: researchResult.results,
+                result_file: fileInfo.absolutePath,
+                result_file_relative: fileInfo.relativePath,
+                result_file_name: fileInfo.fileName,
+            };
+        }
         return createSuccessResponse({
             request_id: result.requestId,
             provider: result.provider,
@@ -157,7 +205,7 @@ async function handleCreateTool(inputs, forcedProvider) {
             status: result.status,
             favorites,
             parameters: validatedParameters || model.defaultParameters || {},
-            available_models: catalog.map(summarizeModel),
+            ...(synchronousResultPayload || {}),
             message: "Research request created successfully",
         });
     }
@@ -166,39 +214,23 @@ async function handleCreateTool(inputs, forcedProvider) {
         return createErrorResponse(`Failed to create research request: ${message}`, REQUEST_STATUS.FAILED);
     }
 }
-async function fetchStatus(inputs, forcedProvider) {
-    let providerId;
-    if (forcedProvider) {
-        ensureProviderAllowed(inputs.provider, forcedProvider);
-        ensureRequestProviderMatches(inputs.request_id, forcedProvider);
-        providerId = forcedProvider;
-    }
-    else {
-        providerId = detectProviderForRequest(inputs.request_id, inputs.provider);
-    }
+async function fetchStatus(inputs) {
+    const providerId = detectProviderForRequest(inputs.request_id, inputs.provider);
     const provider = getProvider(providerId);
     const response = await runWithProvider(providerId, async () => provider.checkStatus(inputs.request_id));
     rememberRequestProvider(providerId, response.requestId);
     return response;
 }
-async function fetchResults(inputs, forcedProvider) {
-    let providerId;
-    if (forcedProvider) {
-        ensureProviderAllowed(inputs.provider, forcedProvider);
-        ensureRequestProviderMatches(inputs.request_id, forcedProvider);
-        providerId = forcedProvider;
-    }
-    else {
-        providerId = detectProviderForRequest(inputs.request_id, inputs.provider);
-    }
+async function fetchResults(inputs) {
+    const providerId = detectProviderForRequest(inputs.request_id, inputs.provider);
     const provider = getProvider(providerId);
     const response = await runWithProvider(providerId, async () => provider.getResults(inputs.request_id));
     rememberRequestProvider(providerId, response.requestId);
     return response;
 }
-async function handleStatusTool(inputs, forcedProvider) {
+async function handleStatusTool(inputs) {
     try {
-        const status = await fetchStatus(inputs, forcedProvider);
+        const status = await fetchStatus(inputs);
         return createSuccessResponse({
             request_id: status.requestId,
             provider: status.provider,
@@ -212,14 +244,18 @@ async function handleStatusTool(inputs, forcedProvider) {
         return createErrorResponse(`Failed to check status: ${message}`, REQUEST_STATUS.ERROR);
     }
 }
-async function handleResultsTool(inputs, forcedProvider) {
+async function handleResultsTool(inputs) {
     try {
-        const result = await fetchResults(inputs, forcedProvider);
+        const result = await fetchResults(inputs);
+        const fileInfo = await persistResearchResult(result);
         return createSuccessResponse({
             request_id: result.requestId,
             provider: result.provider,
             model: result.model,
             results: result.results,
+            result_file: fileInfo.absolutePath,
+            result_file_relative: fileInfo.relativePath,
+            result_file_name: fileInfo.fileName,
         });
     }
     catch (error) {
@@ -232,31 +268,16 @@ server.registerTool("research_request_create", {
     description: "Create a new research request on OpenAI, DeepSeek, or another configured reasoning provider.",
     inputSchema: createRequestSchema.shape,
 }, (inputs) => handleCreateTool(inputs));
-server.registerTool("openai_deep_research_create", {
-    title: "Create OpenAI Research Request (legacy alias)",
-    description: "Legacy OpenAI-only alias. Use research_request_create for multi-provider support.",
-    inputSchema: createRequestSchema.shape,
-}, (inputs) => handleCreateTool(inputs, "openai"));
 server.registerTool("research_request_check_status", {
     title: "Check Research Request Status",
     description: "Check the status of a research request for any provider.",
     inputSchema: statusSchema.shape,
 }, (inputs) => handleStatusTool(inputs));
-server.registerTool("openai_deep_research_check_status", {
-    title: "Check OpenAI Research Request Status (legacy alias)",
-    description: "Legacy OpenAI-only alias. Use research_request_check_status for multi-provider support.",
-    inputSchema: statusSchema.shape,
-}, (inputs) => handleStatusTool(inputs, "openai"));
 server.registerTool("research_request_get_results", {
     title: "Get Research Results",
     description: "Retrieve the results of a completed research request for any provider.",
     inputSchema: statusSchema.shape,
 }, (inputs) => handleResultsTool(inputs));
-server.registerTool("openai_deep_research_get_results", {
-    title: "Get OpenAI Research Results (legacy alias)",
-    description: "Legacy OpenAI-only alias. Use research_request_get_results for multi-provider support.",
-    inputSchema: statusSchema.shape,
-}, (inputs) => handleResultsTool(inputs, "openai"));
 async function listModels(providerFilter) {
     const providerIds = providerFilter ? [normalizeProviderId(providerFilter)] : getAvailableProviderIds();
     const details = [];
@@ -294,11 +315,6 @@ async function reasoningModelsHandler(inputs, _extra) {
 server.registerTool("reasoning_models_list", {
     title: "List Reasoning Models",
     description: "List reasoning/thinking models available across all configured providers.",
-    inputSchema: listModelsSchema.shape,
-}, reasoningModelsHandler);
-server.registerTool("openai_thinking_models_list", {
-    title: "List Reasoning Models (legacy alias)",
-    description: "Legacy alias for reasoning_models_list. Lists available reasoning models.",
     inputSchema: listModelsSchema.shape,
 }, reasoningModelsHandler);
 server.registerTool("reasoning_providers_list", {

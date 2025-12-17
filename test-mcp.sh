@@ -124,8 +124,6 @@ show_menu() {
     echo "5) Create research request (DeepSeek)"
     echo "6) Check request status"
     echo "7) Get research results"
-    echo "8) Custom JSON request"
-    echo "9) Quick test (simple query)"
     echo "0) Exit"
     echo ""
     echo -n "Choose an option: "
@@ -228,81 +226,6 @@ test_get_results() {
     }" "get_results"
 }
 
-test_custom() {
-    echo -e "\n${GREEN}=== Custom JSON Request ===${NC}\n"
-    echo "Paste your JSON request and press Ctrl+D when done:"
-    local custom_json=$(cat)
-
-    echo -e "\n${YELLOW}Sending custom request...${NC}\n"
-
-    # Validate JSON first
-    if ! echo "$custom_json" | jq '.' >/dev/null 2>&1; then
-        echo -e "${RED}Error: Invalid JSON${NC}"
-        return 1
-    fi
-
-    local response=$(echo "$custom_json" | NODE_NO_WARNINGS=1 node dist/server.js 2>&1 | grep -v "^(node:\|^Use \`node")
-
-    echo -e "${YELLOW}Response:${NC}"
-    if echo "$response" | jq '.' >/dev/null 2>&1; then
-        # Try to extract nested JSON from result.content[0].text
-        local nested_json=$(echo "$response" | jq -r '.result.content[0].text' 2>/dev/null)
-
-        if [ -n "$nested_json" ] && [ "$nested_json" != "null" ] && echo "$nested_json" | jq '.' >/dev/null 2>&1; then
-            # Display the nested JSON content
-            echo "$nested_json" | jq '.'
-        else
-            # Display the full MCP response
-            echo "$response" | jq '.'
-        fi
-    else
-        echo "$response"
-    fi
-}
-
-test_quick() {
-    echo -e "\n${GREEN}=== Quick Test (DeepSeek) ===${NC}\n"
-
-    local provider="deepseek"
-    local model="deepseek-reasoner"
-    local query="What is 2+2? Answer in one sentence."
-
-    echo -e "${CYAN}Testing with DeepSeek (synchronous)...${NC}"
-    echo "Query: $query"
-    echo "Model: $model"
-    echo ""
-
-    # Create request
-    local request='{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"research_request_create","arguments":{"provider":"deepseek","query":"What is 2+2? Answer in one sentence.","model":"deepseek-reasoner"}}}'
-
-    echo -e "${YELLOW}Creating research request...${NC}"
-    local create_response=$(echo "$request" | NODE_NO_WARNINGS=1 node dist/server.js 2>&1 | grep -v "^(node:\|^Use \`node")
-
-    echo "$create_response" | jq '.' 2>/dev/null || echo "$create_response"
-
-    # Extract request_id from response
-    local request_id=$(echo "$create_response" | jq -r '.result.content[0].text' 2>/dev/null | jq -r '.request_id' 2>/dev/null)
-
-    if [ -n "$request_id" ] && [ "$request_id" != "null" ]; then
-        echo -e "\n${CYAN}Request ID: $request_id${NC}"
-        echo -e "\n${YELLOW}Getting results...${NC}"
-
-        local results_request="{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"research_request_get_results\",\"arguments\":{\"request_id\":\"$request_id\"}}}"
-        local results_response=$(echo "$results_request" | NODE_NO_WARNINGS=1 node dist/server.js 2>&1 | grep -v "^(node:\|^Use \`node")
-
-        echo "$results_response" | jq '.' 2>/dev/null || echo "$results_response"
-
-        # Try to extract and display just the report
-        local report=$(echo "$results_response" | jq -r '.result.content[0].text' 2>/dev/null | jq -r '.results.report' 2>/dev/null)
-        if [ -n "$report" ] && [ "$report" != "null" ]; then
-            echo -e "\n${GREEN}Report:${NC}"
-            echo "$report"
-        fi
-    else
-        echo -e "${RED}Failed to extract request_id${NC}"
-    fi
-}
-
 # Main function
 main() {
     # Check if jq is installed
@@ -347,8 +270,6 @@ main() {
             5) test_create_deepseek ;;
             6) test_check_status ;;
             7) test_get_results ;;
-            8) test_custom ;;
-            9) test_quick ;;
             0)
                 echo -e "\n${GREEN}Session Summary:${NC}"
                 echo -e "${CYAN}Total requests: ${REQUEST_COUNTER}${NC}"

@@ -102,6 +102,9 @@ export function createDeepSeekProvider(config: ProviderConfig): ReasoningProvide
         status: REQUEST_STATUS.COMPLETED,
         model: args.model.id,
         provider: "deepseek",
+        extra: {
+          synchronousResult: result,
+        },
       };
     },
     async checkStatus(requestId: string): Promise<RequestStatusResult> {

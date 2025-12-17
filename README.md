@@ -8,10 +8,9 @@ A TypeScript MCP (Model Context Protocol) server that can route research queries
 
 - **research_request_create**: Create new research requests across providers (OpenAI, DeepSeek, more soon)
 - **research_request_check_status**: Check request state for any provider  
-- **research_request_get_results**: Retrieve completed research output with citations when provided
-- **reasoning_models_list** / **openai_thinking_models_list**: Inspect dynamic provider model catalogs with favorite/default hints
+- **research_request_get_results**: Retrieve completed research output with citations when provided, and save a Markdown transcript locally for reference
+- **reasoning_models_list**: Inspect dynamic provider model catalogs with favorite/default hints
 - **reasoning_providers_list**: Discover configured providers, credential status, and relevant env keys
-- Legacy compatibility: `openai_deep_research_*` tools remain for OpenAI-only flows and now guard against non-OpenAI providers.
 
 ## Quick Start
 
@@ -64,6 +63,7 @@ research_request_create({
   }
 })
 ```
+Returns a request identifier and initial status. DeepSeek completes synchronously, so the report and citations (plus the saved Markdown path) are included in this response.
 
 ### Check Status
 ```typescript
@@ -80,6 +80,7 @@ research_request_get_results({
   provider?: "openai"
 })
 ```
+Retrieves completed results, writes the report and citations to a Markdown file (default directory `research-results/`), and returns the filename so you can open it locally.
 
 ### List Reasoning Models
 ```typescript
@@ -111,6 +112,7 @@ Returns each configured provider, credential status, and the env var keys to set
   - `LITELLM_MODEL_SOURCE`: override URL for the LiteLLM catalog (defaults to the official GitHub JSON)
   - `OPENAI_TIMEOUT`, `DEEPSEEK_TIMEOUT`: request timeouts in ms
   - `OPENAI_BASE_URL`, `DEEPSEEK_BASE_URL`: override API endpoints when self-hosting
+  - `RESEARCH_RESULTS_DIR`: directory for saved Markdown exports (defaults to `research-results/`)
 
 ## Development
 
@@ -132,7 +134,7 @@ The suite now logs:
 - Full OpenAI research lifecycle (create → status polling → results) when `OPENAI_API_KEY` (or `TEST_OPENAI_API_KEY`) is set.
 - Full DeepSeek reasoning lifecycle (create/status/results) when `DEEPSEEK_API_KEY` is set. Tests are skipped with a clear note when credentials are missing.
 
-Provide at least one of `OPENAI_API_KEY`/`TEST_OPENAI_API_KEY` or `DEEPSEEK_API_KEY` before running so the related provider flow executes. Set `OPENAI_TEST_MODEL` (default `o4-mini`) if you want to force the OpenAI tests to use a specific model—handy for avoiding long-running deep research jobs. The legacy `openai_deep_research_*` tools still exist but now enforce OpenAI-only usage; prefer the provider-neutral `research_request_*` tools going forward.
+Provide at least one of `OPENAI_API_KEY`/`TEST_OPENAI_API_KEY` or `DEEPSEEK_API_KEY` before running so the related provider flow executes. Set `OPENAI_TEST_MODEL` (default `o4-mini`) if you want to force the OpenAI tests to use a specific model—handy for avoiding long-running deep research jobs.
 
 ## License
 

@@ -87,6 +87,9 @@ export function createDeepSeekProvider(config) {
                 status: REQUEST_STATUS.COMPLETED,
                 model: args.model.id,
                 provider: "deepseek",
+                extra: {
+                    synchronousResult: result,
+                },
             };
         },
         async checkStatus(requestId) {

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { existsSync } from 'fs';
 import { spawn } from 'child_process';
 
 const TEST_TIMEOUT = 300000; // 5 minutes for deep research
@@ -166,10 +167,7 @@ class MCPTester {
           'research_request_check_status',
           'research_request_get_results',
           'reasoning_models_list',
-          'reasoning_providers_list',
-          'openai_deep_research_create',
-          'openai_deep_research_check_status', 
-          'openai_deep_research_get_results'
+          'reasoning_providers_list'
         ];
         
         for (const tool of expectedTools) {
@@ -316,31 +314,7 @@ class MCPTester {
         };
       });
 
-      // Test 3: Legacy alias guard
-      await this.test('Legacy OpenAI Alias Guard', 'Ensures openai_deep_research_* tools reject non-OpenAI providers.', async () => {
-        const response = await this.sendMCPRequest('tools/call', {
-          name: 'openai_deep_research_create',
-          arguments: {
-            provider: 'deepseek',
-            query: 'Test blocking behavior',
-            model: 'deepseek-reasoner'
-          }
-        });
-
-        if (!response.result || !response.result.content) {
-          throw new Error('No content in alias guard response');
-        }
-
-        const payload = JSON.parse(response.result.content[0].text);
-        if (!payload.error || !payload.error.includes("provider 'openai'")) {
-          throw new Error('Legacy alias did not reject non-OpenAI provider.');
-        }
-
-        return {
-          summary: 'Legacy alias correctly rejected provider mismatch.',
-          data: payload,
-        };
-      });
+      // (Legacy alias guard removed)
 
       // OpenAI flow (optional)
       let openaiRequestId;
@@ -459,6 +433,14 @@ class MCPTester {
         if (!content.results || !content.results.report) {
           throw new Error('No report in results');
         }
+
+        if (!content.result_file || typeof content.result_file !== 'string') {
+          throw new Error('Missing result_file path in response');
+        }
+
+        if (!existsSync(content.result_file)) {
+          throw new Error(`Result file not found on disk: ${content.result_file}`);
+        }
         
         console.log(`   📝 Report preview: ${content.results.report.substring(0, 100)}...`);
         
@@ -505,6 +487,15 @@ class MCPTester {
           }
           if (content.status !== 'completed') {
             throw new Error(`DeepSeek request should complete synchronously, got status ${content.status}`);
+          }
+          if (!content.results || !content.results.report) {
+            throw new Error('DeepSeek create response missing inline results');
+          }
+          if (!content.result_file || typeof content.result_file !== 'string') {
+            throw new Error('DeepSeek create response missing result_file');
+          }
+          if (!existsSync(content.result_file)) {
+            throw new Error(`DeepSeek result file missing on disk: ${content.result_file}`);
           }
 
           deepseekRequestId = content.request_id;
@@ -557,6 +548,14 @@ class MCPTester {
           const content = JSON.parse(response.result.content[0].text);
           if (!content.results || !content.results.report) {
             throw new Error('No report in DeepSeek results');
+          }
+
+          if (!content.result_file || typeof content.result_file !== 'string') {
+            throw new Error('Missing result_file path for DeepSeek response');
+          }
+
+          if (!existsSync(content.result_file)) {
+            throw new Error(`DeepSeek result file missing on disk: ${content.result_file}`);
           }
 
           console.log(`   📝 DeepSeek preview: ${content.results.report.substring(0, 100)}...`);

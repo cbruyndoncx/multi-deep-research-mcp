@@ -35,12 +35,25 @@ export interface CreateReasoningRequest {
   model: ReasoningModel;
 }
 
+export interface ResearchResult {
+  requestId: string;
+  provider: ProviderId;
+  model: string;
+  results: Record<string, unknown>;
+  raw?: unknown;
+}
+
+export interface CreateRequestResultExtra {
+  synchronousResult?: ResearchResult;
+  [key: string]: unknown;
+}
+
 export interface CreateRequestResult {
   requestId: string;
   status: string;
   model: string;
   provider: ProviderId;
-  extra?: Record<string, unknown>;
+  extra?: CreateRequestResultExtra;
 }
 
 export interface RequestStatusResult {
@@ -49,14 +62,6 @@ export interface RequestStatusResult {
   provider: ProviderId;
   model: string;
   createdAt?: string;
-  raw?: unknown;
-}
-
-export interface ResearchResult {
-  requestId: string;
-  provider: ProviderId;
-  model: string;
-  results: Record<string, unknown>;
   raw?: unknown;
 }
 
