@@ -1,0 +1,24 @@
+{
+  "request_id": "resp_04dad188ec1fcd5c006942e2e5bab4819381a43db19eebc0e3",
+  "provider": "openai",
+  "model": "o4-mini-2025-04-16",
+  "results": {
+    "report": "King Philippe of the Belgians is at least quadrilingual.  He speaks:\n\n• French – his native tongue.  \n• Dutch – used in official speeches and learned during his bilingual schooling in Brussels and Flanders.  \n• German – in which his annual Christmas message is traditionally recorded.  \n• English – the language of instruction at Trinity College, Oxford, and Stanford University, where he earned his M.A. in political science.  \n\nHe took his oath of office in all three of Belgium’s official languages—French, Dutch (Flemish) and German—before Parliament on 21 July 2013 ([aljazeera.com](https://www.aljazeera.com/news/2013/7/22/belgium-swears-in-king-philippe?utm_source=openai)).  His early education in both French and Dutch, followed by university studies in English at Oxford and Stanford, demonstrate his fluency in English as well ([britannica.com](https://www.britannica.com/biography/Philippe-King-of-the-Belgians?utm_source=openai)).",
+    "citations": [
+      {
+        "id": 1,
+        "title": "Belgium swears in King Philippe | Human Rights News | Al Jazeera",
+        "url": "https://www.aljazeera.com/news/2013/7/22/belgium-swears-in-king-philippe?utm_source=openai"
+      },
+      {
+        "id": 2,
+        "title": "Philippe, King of the Belgians | Biography & Facts | Britannica",
+        "url": "https://www.britannica.com/biography/Philippe-King-of-the-Belgians?utm_source=openai"
+      }
+    ],
+    "citation_count": 2
+  },
+  "result_file": "/home/cb/TOOLBOX/MCP/multi-deep-research-mcp/research-results/openai_o4-mini-2025-04-16_resp_04dad188ec1fcd5c006942e2e5bab4819381a43db19_2025-12-17T17-11-20-600Z.md",
+  "result_file_relative": "research-results/openai_o4-mini-2025-04-16_resp_04dad188ec1fcd5c006942e2e5bab4819381a43db19_2025-12-17T17-11-20-600Z.md",
+  "result_file_name": "openai_o4-mini-2025-04-16_resp_04dad188ec1fcd5c006942e2e5bab4819381a43db19_2025-12-17T17-11-20-600Z.md"
+}

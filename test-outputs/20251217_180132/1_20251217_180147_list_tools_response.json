@@ -1,0 +1,125 @@
+{
+  "result": {
+    "tools": [
+      {
+        "name": "research_request_create",
+        "title": "Create Research Request",
+        "description": "Create a new research request on OpenAI, DeepSeek, or another configured reasoning provider.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "type": "string",
+              "description": "Provider to use (openai, deepseek, ...). Defaults to env or OpenAI."
+            },
+            "model": {
+              "type": "string",
+              "description": "Model identifier for the selected provider. Leave blank to auto-select favorites or provider defaults."
+            },
+            "query": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The research question or topic to investigate"
+            },
+            "system_message": {
+              "type": "string",
+              "description": "Optional system message to guide the research approach"
+            },
+            "include_code_interpreter": {
+              "type": "boolean",
+              "default": false,
+              "description": "Whether to include the code interpreter tool (if supported by the model)"
+            },
+            "parameters": {
+              "type": "object",
+              "additionalProperties": {},
+              "description": "Model-specific parameters validated against the selected model."
+            }
+          },
+          "required": [
+            "query"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      {
+        "name": "research_request_check_status",
+        "title": "Check Research Request Status",
+        "description": "Check the status of a research request for any provider.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The provider response/request identifier"
+            },
+            "provider": {
+              "type": "string",
+              "description": "Provider to use (openai, deepseek, ...). Defaults to previous provider used for the request."
+            }
+          },
+          "required": [
+            "request_id"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      {
+        "name": "research_request_get_results",
+        "title": "Get Research Results",
+        "description": "Retrieve the results of a completed research request for any provider.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The provider response/request identifier"
+            },
+            "provider": {
+              "type": "string",
+              "description": "Provider to use (openai, deepseek, ...). Defaults to previous provider used for the request."
+            }
+          },
+          "required": [
+            "request_id"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      {
+        "name": "reasoning_models_list",
+        "title": "List Reasoning Models",
+        "description": "List reasoning/thinking models available across all configured providers.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "type": "string",
+              "description": "Optional provider filter. Leave blank to list every provider."
+            }
+          },
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      {
+        "name": "reasoning_providers_list",
+        "title": "List Reasoning Providers",
+        "description": "List configured reasoning providers, credential status, and related environment keys.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      }
+    ]
+  },
+  "jsonrpc": "2.0",
+  "id": 4126
+}

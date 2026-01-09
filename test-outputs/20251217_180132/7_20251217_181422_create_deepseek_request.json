@@ -1,0 +1,13 @@
+{
+  "jsonrpc": "2.0",
+  "id": 355,
+  "method": "tools/call",
+  "params": {
+    "name": "research_request_create",
+    "arguments": {
+      "provider": "deepseek",
+      "query": "how many languages does the king of belgium speak ?",
+      "model": "deepseek-reasoner"
+    }
+  }
+}

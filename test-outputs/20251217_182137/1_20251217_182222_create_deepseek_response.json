@@ -1,0 +1,17 @@
+{
+  "request_id": "0330e1c6-832e-4c3f-a9fa-62187ff42a3d",
+  "provider": "deepseek",
+  "model": "deepseek-reasoner",
+  "status": "completed",
+  "favorites": [],
+  "parameters": {},
+  "results": {
+    "report": "The Belgian Crown Princess, **Princess Elisabeth, Duchess of Brabant**, is known to speak at least **three languages fluently**:\n\n1.  **Dutch** - Her mother tongue and the primary language of the region of Flanders, where she was raised.\n2.  **French** - The language of the Brussels-Capital Region and the Wallonia region. As the future constitutional monarch of a bilingual country, fluency in French is essential.\n3.  **English** - She has demonstrated excellent command of English during her studies and public appearances. She studied for two years at **Lincoln College, Oxford** (a History and Politics program taught in English) and gave a notable speech in English at her 18th birthday ceremony.\n\nAdditionally, it is **very likely she has studied German** in school. German is the third official language of Belgium (spoken by a small community in the east of the country), and it is standard in the Belgian educational curriculum, especially for someone in her position. However, her level of public proficiency in German is not as frequently demonstrated.\n\n**In summary:**\n*   **Fluent:** Dutch, French, English.\n*   **Almost certainly studied:** German.\n\nHer multilingualism is a direct reflection of Belgium's complex linguistic landscape and her future role as a unifying figure for all linguistic communities in the country. Her education at the bilingual **Dutch-French Sint-Jan Berchmanscollege** in Brussels and her subsequent studies in the UK and at the **Royal Military Academy** (where she followed classes in both Dutch and French) have solidified these language skills.",
+    "citations": [],
+    "citation_count": 0
+  },
+  "result_file": "/home/cb/TOOLBOX/MCP/multi-deep-research-mcp/research-results/deepseek_deepseek-reasoner_0330e1c6-832e-4c3f-a9fa-62187ff42a3d_2025-12-17T17-22-21-999Z.md",
+  "result_file_relative": "research-results/deepseek_deepseek-reasoner_0330e1c6-832e-4c3f-a9fa-62187ff42a3d_2025-12-17T17-22-21-999Z.md",
+  "result_file_name": "deepseek_deepseek-reasoner_0330e1c6-832e-4c3f-a9fa-62187ff42a3d_2025-12-17T17-22-21-999Z.md",
+  "message": "Research request created successfully"
+}

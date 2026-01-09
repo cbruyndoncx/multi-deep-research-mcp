@@ -1,0 +1,9 @@
+{
+  "jsonrpc": "2.0",
+  "id": 28789,
+  "method": "tools/call",
+  "params": {
+    "name": "reasoning_providers_list",
+    "arguments": {}
+  }
+}

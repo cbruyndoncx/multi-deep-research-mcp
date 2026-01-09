@@ -1,0 +1,33 @@
+{
+  "default_provider": "openai",
+  "providers": [
+    {
+      "id": "openai",
+      "display_name": "OpenAI",
+      "env_keys": [
+        "OPENAI_API_KEY"
+      ],
+      "enabled": true,
+      "missing_keys": [],
+      "favorites_env_key": "OPENAI_FAVORITE_MODELS",
+      "favorites_value": null,
+      "default_model_env_key": "OPENAI_DEFAULT_MODEL",
+      "default_model_value": null,
+      "requires_background_polling": true
+    },
+    {
+      "id": "deepseek",
+      "display_name": "DeepSeek",
+      "env_keys": [
+        "DEEPSEEK_API_KEY"
+      ],
+      "enabled": true,
+      "missing_keys": [],
+      "favorites_env_key": "DEEPSEEK_FAVORITE_MODELS",
+      "favorites_value": null,
+      "default_model_env_key": "DEEPSEEK_DEFAULT_MODEL",
+      "default_model_value": null,
+      "requires_background_polling": false
+    }
+  ]
+}

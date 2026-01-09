@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-import { existsSync } from 'fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { spawn } from 'child_process';
+import path from 'path';
 
 const TEST_TIMEOUT = 300000; // 5 minutes for deep research
 const OPENAI_TEST_MODEL = process.env.OPENAI_TEST_MODEL || 'o4-mini';
@@ -73,6 +74,34 @@ class MCPTester {
 
       this.serverProcess.on('error', reject);
     });
+  }
+
+  async runCLI(args) {
+    const cwd = process.cwd().includes('tests') ? '..' : '.';
+    const env = {
+      ...process.env,
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY || process.env.TEST_OPENAI_API_KEY,
+    };
+    return new Promise((resolve, reject) => {
+      const child = spawn('node', ['dist/cli.js', ...args], { cwd, env });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.on('data', (data) => {
+        stdout += data.toString();
+      });
+      child.stderr.on('data', (data) => {
+        stderr += data.toString();
+      });
+      child.on('error', reject);
+      child.on('close', (code) => resolve({ code, stdout, stderr }));
+    });
+  }
+
+  createTempDir() {
+    const cwd = process.cwd().includes('tests') ? '..' : '.';
+    const baseDir = path.resolve(cwd, 'test-outputs', 'cli');
+    mkdirSync(baseDir, { recursive: true });
+    return mkdtempSync(path.join(baseDir, 'run-'));
   }
 
   async sendMCPRequest(method, params = {}) {
@@ -242,6 +271,35 @@ class MCPTester {
         };
       });
 
+      await this.test('CLI • List Reasoning Providers', 'Runs the CLI with file output and parses the MCP payload.', async () => {
+        const tempDir = this.createTempDir();
+        const outputPath = path.join(tempDir, 'providers.json');
+        try {
+          const result = await this.runCLI(['reasoning_providers_list', '--output', outputPath]);
+          if (result.code !== 0) {
+            throw new Error(`CLI exited with ${result.code}: ${result.stderr || result.stdout}`);
+          }
+          if (!existsSync(outputPath)) {
+            throw new Error('CLI did not create output file');
+          }
+          const raw = readFileSync(outputPath, 'utf8');
+          const response = JSON.parse(raw);
+          if (!response.content || !Array.isArray(response.content)) {
+            throw new Error('CLI response missing content array');
+          }
+          const payload = JSON.parse(response.content[0].text);
+          if (!payload.providers || !Array.isArray(payload.providers)) {
+            throw new Error('CLI providers payload missing providers array');
+          }
+          return {
+            summary: `Providers: ${payload.providers.map((entry) => entry.id).join(', ')}`,
+            data: payload,
+          };
+        } finally {
+          rmSync(tempDir, { recursive: true, force: true });
+        }
+      });
+
       await this.test('OpenAI Model Details', 'Confirms reasoning_models_list returns full metadata for every OpenAI model plus env keys.', async () => {
         const response = await this.sendMCPRequest('tools/call', {
           name: 'reasoning_models_list',
@@ -320,6 +378,43 @@ class MCPTester {
       let openaiRequestId;
       let openaiInitialStatus;
       if (this.hasProvider('openai')) {
+        await this.test('CLI • OpenAI Create Research Request', 'Runs the CLI create flow using file inputs and validates the output JSON.', async () => {
+          const tempDir = this.createTempDir();
+          const queryPath = path.join(tempDir, 'query.txt');
+          const systemPath = path.join(tempDir, 'system.txt');
+          const outputPath = path.join(tempDir, 'create.json');
+          try {
+            writeFileSync(queryPath, 'What is 2+2? Give a very brief answer.');
+            writeFileSync(systemPath, 'Answer concisely.');
+            const result = await this.runCLI([
+              'research_request_create',
+              '--query-file', queryPath,
+              '--system-message-file', systemPath,
+              '--model', OPENAI_TEST_MODEL,
+              '--output', outputPath
+            ]);
+            if (result.code !== 0) {
+              throw new Error(`CLI exited with ${result.code}: ${result.stderr || result.stdout}`);
+            }
+            const raw = readFileSync(outputPath, 'utf8');
+            const response = JSON.parse(raw);
+            if (!response.content || !response.content[0] || !response.content[0].text) {
+              throw new Error(`CLI create response missing content: ${raw}`);
+            }
+            const payload = JSON.parse(response.content[0].text);
+            if (!payload.request_id) {
+              const errorDetail = payload.error ? ` error=${payload.error}` : '';
+              throw new Error(`CLI create response missing request_id.${errorDetail}`);
+            }
+            return {
+              summary: `CLI request ${payload.request_id} status ${payload.status}`,
+              data: payload,
+            };
+          } finally {
+            rmSync(tempDir, { recursive: true, force: true });
+          }
+        });
+
         await this.test('OpenAI • Create Research Request', 'Submits a short OpenAI Deep Research job and validates the returned request id/status.', async () => {
           const response = await this.sendMCPRequest('tools/call', {
             name: 'research_request_create',
@@ -584,17 +679,18 @@ class MCPTester {
 
   printSummary() {
     console.log('\n📊 Test Summary:');
+    const total = this.testResults.length;
+    const passed = this.testResults.filter((result) => result.status === 'PASSED').length;
     for (const result of this.testResults) {
-      if (result.status === 'PASSED') {
-        console.log(`   ✅ ${result.name} – ${result.description}`);
-        if (result.summary) {
-          console.log(`      ↳ ${result.summary}`);
-        }
-      } else {
-        console.log(`   ❌ ${result.name} – ${result.description}`);
-        console.log(`      ↳ Error: ${result.error}`);
-      }
+      const statusIcon = result.status === 'PASSED' ? '✅' : result.status === 'SKIPPED' ? '⚪' : '❌';
+      const detail = result.status === 'PASSED'
+        ? result.summary || result.description
+        : result.status === 'SKIPPED'
+          ? result.summary || result.description
+          : result.error || result.description;
+      console.log(`   ${statusIcon} ${result.name}: ${detail}`);
     }
+    console.log(`\n✅ Passed ${passed} of ${total} tests`);
   }
 }
 

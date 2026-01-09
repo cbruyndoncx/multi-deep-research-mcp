@@ -1,0 +1,12 @@
+{
+  "providers": [
+    {
+      "provider": "openai",
+      "error": "Connection error."
+    },
+    {
+      "provider": "deepseek",
+      "error": "DEEPSEEK_API_KEY environment variable is required for the deepseek provider."
+    }
+  ]
+}

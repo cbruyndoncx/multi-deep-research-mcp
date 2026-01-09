@@ -1,0 +1,11 @@
+{
+  "jsonrpc": "2.0",
+  "id": 28425,
+  "method": "tools/call",
+  "params": {
+    "name": "research_request_get_results",
+    "arguments": {
+      "request_id": "dummy-request"
+    }
+  }
+}

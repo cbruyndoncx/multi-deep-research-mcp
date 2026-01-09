@@ -1,0 +1,11 @@
+{
+  "jsonrpc": "2.0",
+  "id": 31091,
+  "method": "tools/call",
+  "params": {
+    "name": "research_request_check_status",
+    "arguments": {
+      "request_id": "6b276371-c541-4b5c-96b9-4a072e0143f9"
+    }
+  }
+}

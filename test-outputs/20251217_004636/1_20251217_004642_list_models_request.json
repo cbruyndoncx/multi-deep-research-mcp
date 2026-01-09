@@ -1,0 +1,9 @@
+{
+  "jsonrpc": "2.0",
+  "id": 30536,
+  "method": "tools/call",
+  "params": {
+    "name": "reasoning_models_list",
+    "arguments": {}
+  }
+}

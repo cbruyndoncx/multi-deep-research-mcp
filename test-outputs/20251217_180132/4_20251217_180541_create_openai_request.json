@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": 31379,
+  "method": "tools/call",
+  "params": {
+    "name": "research_request_create",
+    "arguments": {
+      "query": "how many languages does the belgian king speak",
+      "model": "o4-mini"
+    }
+  }
+}

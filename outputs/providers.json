@@ -1,0 +1,8 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{\n  \"default_provider\": \"openai\",\n  \"providers\": [\n    {\n      \"id\": \"openai\",\n      \"display_name\": \"OpenAI\",\n      \"env_keys\": [\n        \"OPENAI_API_KEY\"\n      ],\n      \"enabled\": true,\n      \"missing_keys\": [],\n      \"favorites_env_key\": \"OPENAI_FAVORITE_MODELS\",\n      \"favorites_value\": null,\n      \"default_model_env_key\": \"OPENAI_DEFAULT_MODEL\",\n      \"default_model_value\": null,\n      \"requires_background_polling\": true\n    },\n    {\n      \"id\": \"deepseek\",\n      \"display_name\": \"DeepSeek\",\n      \"env_keys\": [\n        \"DEEPSEEK_API_KEY\"\n      ],\n      \"enabled\": true,\n      \"missing_keys\": [],\n      \"favorites_env_key\": \"DEEPSEEK_FAVORITE_MODELS\",\n      \"favorites_value\": null,\n      \"default_model_env_key\": \"DEEPSEEK_DEFAULT_MODEL\",\n      \"default_model_value\": null,\n      \"requires_background_polling\": false\n    }\n  ]\n}"
+    }
+  ]
+}
