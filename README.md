@@ -7,16 +7,47 @@ A TypeScript MCP (Model Context Protocol) server that can route research queries
 ## Features
 
 - **research_request_create**: Create new research requests across providers (OpenAI, DeepSeek, more soon)
-- **research_request_check_status**: Check request state for any provider  
+- **research_request_check_status**: Check request state for any provider
 - **research_request_get_results**: Retrieve completed research output with citations when provided, and save a Markdown transcript locally for reference
 - **reasoning_models_list**: Inspect dynamic provider model catalogs with favorite/default hints
 - **reasoning_providers_list**: Discover configured providers, credential status, and relevant env keys
 
-## Quick Start
+## Installation
+
+### Skill Only (Most Users)
+
+**Just copy the skill folder - no repo needed:**
 
 ```bash
-npx github:cbruyndoncx/multi-deep-research-mcp
+git clone https://github.com/YOUR_GITHUB/multi-deep-research-mcp.git
+cp -r multi-deep-research-mcp/.claude/skills/deep-research ~/.claude/skills/
+rm -rf multi-deep-research-mcp  # Delete repo if you don't need CLI
+
+export OPENAI_API_KEY="sk-proj-your-key"
+export DEEPSEEK_API_KEY="sk-your-key"
 ```
+
+Then restart Claude Code and use `/deep-research`.
+
+### With CLI (One-Line Install)
+
+If you also want to use the CLI with `npx` commands:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/YOUR_GITHUB/multi-deep-research-mcp/main/scripts/install.sh | bash
+export OPENAI_API_KEY="sk-proj-your-key"
+export DEEPSEEK_API_KEY="sk-your-key"
+```
+
+This keeps the repo at `~/.multi-deep-research-mcp` so you can run:
+```bash
+cd ~/.multi-deep-research-mcp
+npx multi-deep-research-cli research_request_create --query-file query.txt
+```
+
+### More Installation Methods
+
+See [INSTALL.md](INSTALL.md) for additional setup options and troubleshooting.
 
 ## CLI Usage
 
